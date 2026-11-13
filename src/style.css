@@ -1,0 +1,23 @@
+/* HASAN AI GAME STUDIO X - Base Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* Prevent scrolling/bouncing on mobile */
+    background-color: #1a1a1a; /* Match canvas dark background */
+    touch-action: none; /* Critical for pointer events */
+}
+
+#app {
+    width: 100%;
+    height: 100%;
+}
+
+canvas {
+    display: block; /* Removes bottom spacing below canvas */
+}
