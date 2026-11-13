@@ -1,30 +1,28 @@
-// HASAN AI GAME STUDIO X
-// Core Game State - Ball Sort Evolution
-
-// Colors will be represented by numbers (1 = Red, 2 = Blue, etc.)
-export type ColorId = number;
-
-// A Tube is a LIFO (Last-In-First-Out) stack of colors
-export type Tube = ColorId[];
-
-// The Board is a collection of Tubes
-export type BoardState = Tube[];
-
-// Strict game rules
+export type BoardState = number[][];
 export const TUBE_CAPACITY = 4;
 
-// The complete state of the game at any moment
+export const COLOR_MAP: Record<number, string> = {
+    1: '#FF3366', 2: '#33CCFF', 3: '#33FF66', 4: '#FFCC00',
+    5: '#B833FF', 6: '#FF6633', 7: '#00FFCC', 8: '#FF99CC'
+};
+
+// NEW: Extended GameState interface
 export interface GameState {
     board: BoardState;
-    moves: number;
-    history: BoardState[]; // Stores previous boards for infinite undo
+    initialBoard: BoardState; // For Restart
+    history: BoardState[];    // For Undo
 }
 
-// Function to start a new game
+// Helper to safely deep clone a board
+export function cloneBoard(board: BoardState): BoardState {
+    return board.map(tube => [...tube]);
+}
+
 export function initializeGame(initialBoard: BoardState): GameState {
+    const safeBoard = cloneBoard(initialBoard);
     return {
-        board: initialBoard,
-        moves: 0,
-        history: [] // History starts empty
+        board: safeBoard,
+        initialBoard: cloneBoard(safeBoard), // Keep a pristine copy for restart
+        history: [] // Start with empty history
     };
 }

@@ -1,52 +1,54 @@
-import { TUBE_CAPACITY, type BoardState } from './state';
+import { type BoardState, TUBE_CAPACITY, COLOR_MAP } from './state';
 
-// Colors for the balls (1 = Red, 2 = Blue)
-const COLOR_MAP: Record<number, string> = {
-    1: '#FF3B30', // Premium iOS Red
-    2: '#007AFF', // Premium iOS Blue
-};
-
-// Main function to draw the entire board
-export function drawBoard(ctx: CanvasRenderingContext2D, board: BoardState, width: number, height: number) {
-    // 1. Clear Screen
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, 0, width, height);
-
-    // 2. Dynamically calculate sizes based on mobile screen width
-    const tubeWidth = Math.min(60, width / (board.length + 1.5)); 
-    const gap = 20; // Space between tubes
+export function drawBoard(
+    ctx: CanvasRenderingContext2D, 
+    board: BoardState, 
+    width: number, 
+    height: number,
+    selectedTubeIndex: number | null // NEW: Required parameter to force UI update
+) {
+    const tubeWidth = Math.min(60, width / (board.length + 1.5));
+    const gap = 20;
     const totalWidth = (board.length * tubeWidth) + ((board.length - 1) * gap);
     
-    // Center the board on the screen
     const startX = (width - totalWidth) / 2;
-    const startY = height * 0.3; // Start 30% down from the top
+    const startY = height * 0.3;
+    const ballRadius = tubeWidth / 2 - 4;
+    const tubeHeight = TUBE_CAPACITY * (ballRadius * 2 + 4) + 20;
 
-    // Calculate ball radius and tube height
-    const ballRadius = tubeWidth / 2 - 4; // 4px padding inside tube
-    const tubeHeight = TUBE_CAPACITY * (ballRadius * 2 + 4) + 20; // Fit 4 balls + top padding
-
-    // 3. Draw Each Tube and its Balls
     board.forEach((tube, tIndex) => {
         const x = startX + tIndex * (tubeWidth + gap);
         const y = startY;
 
-        // --- Draw Tube Border (U-shape) ---
-        ctx.strokeStyle = '#555555'; // Gray glass color
+        // Draw Tube Border
+        ctx.shadowBlur = 0; // Reset shadow for tube
+        ctx.strokeStyle = '#555555';
         ctx.lineWidth = 4;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
-        ctx.moveTo(x, y); // Top Left
-        ctx.lineTo(x, y + tubeHeight); // Bottom Left
-        ctx.lineTo(x + tubeWidth, y + tubeHeight); // Bottom Right
-        ctx.lineTo(x + tubeWidth, y); // Top Right
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + tubeHeight);
+        ctx.lineTo(x + tubeWidth, y + tubeHeight);
+        ctx.lineTo(x + tubeWidth, y);
         ctx.stroke();
 
-        // --- Draw Balls inside the tube ---
+        // Draw Balls
         tube.forEach((colorId, bIndex) => {
             const ballX = x + tubeWidth / 2;
-            // Calculate Y from bottom to top
-            const ballY = y + tubeHeight - 10 - ballRadius - (bIndex * (ballRadius * 2 + 4));
+            let ballY = y + tubeHeight - 10 - ballRadius - (bIndex * (ballRadius * 2 + 4));
+
+            const isSelectedTube = tIndex === selectedTubeIndex;
+            const isTopBall = bIndex === tube.length - 1;
+
+            // ✨ THE MAGIC: Lift the top ball if this tube is selected!
+            if (isSelectedTube && isTopBall) {
+                ballY -= (ballRadius * 1.5); // Lift it up
+                ctx.shadowColor = COLOR_MAP[colorId] || '#FFFFFF';
+                ctx.shadowBlur = 15; // Add neon glow effect
+            } else {
+                ctx.shadowBlur = 0; // No glow for unselected balls
+            }
 
             ctx.fillStyle = COLOR_MAP[colorId] || '#FFFFFF';
             ctx.beginPath();
@@ -54,4 +56,5 @@ export function drawBoard(ctx: CanvasRenderingContext2D, board: BoardState, widt
             ctx.fill();
         });
     });
+    ctx.shadowBlur = 0; // Safety reset
 }
