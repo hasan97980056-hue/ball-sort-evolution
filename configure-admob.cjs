@@ -1,5 +1,8 @@
 const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
 
+// 1. Inject AdMob APPLICATION_ID in AndroidManifest.xml
 const manifestPath = 'android/app/src/main/AndroidManifest.xml';
 if (fs.existsSync(manifestPath)) {
   let manifest = fs.readFileSync(manifestPath, 'utf8');
@@ -7,10 +10,11 @@ if (fs.existsSync(manifestPath)) {
     const metaTag = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/>\n    </application>';
     manifest = manifest.replace('</application>', metaTag);
     fs.writeFileSync(manifestPath, manifest, 'utf8');
-    console.log('AdMob APPLICATION_ID added to AndroidManifest.xml');
+    console.log('✅ AdMob APPLICATION_ID added to AndroidManifest.xml');
   }
 }
 
+// 2. Inject admob_app_id in strings.xml
 const stringsPath = 'android/app/src/main/res/values/strings.xml';
 if (fs.existsSync(stringsPath)) {
   let strings = fs.readFileSync(stringsPath, 'utf8');
@@ -18,45 +22,44 @@ if (fs.existsSync(stringsPath)) {
     const strTag = '    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>\n</resources>';
     strings = strings.replace('</resources>', strTag);
     fs.writeFileSync(stringsPath, strings, 'utf8');
-    console.log('admob_app_id added to strings.xml');
+    console.log('✅ admob_app_id added to strings.xml');
   }
 }
 
-
-// --- Set Custom Game Launcher Icon ---
-const { execSync } = require('child_process');
-const path = require('path');
-
+// 3. Replace all Android Launcher Icons with app-icon.jpg
 if (fs.existsSync('app-icon.jpg')) {
-  try {
-    // Convert JPG to genuine PNG for Android aapt2 compiler
-    execSync('ffmpeg -y -i app-icon.jpg app-icon.png', { stdio: 'ignore' });
-    
-    const resDir = 'android/app/src/main/res';
-    const mipmaps = [
-      'mipmap-mdpi',
-      'mipmap-hdpi',
-      'mipmap-xhdpi',
-      'mipmap-xxhdpi',
-      'mipmap-xxxhdpi'
-    ];
+  const resDir = 'android/app/src/main/res';
+  const mipmapSizes = {
+    'mipmap-mdpi': 48,
+    'mipmap-hdpi': 72,
+    'mipmap-xhdpi': 96,
+    'mipmap-xxhdpi': 144,
+    'mipmap-xxxhdpi': 192
+  };
 
-    for (const folder of mipmaps) {
-      const targetDir = path.join(resDir, folder);
-      if (fs.existsSync(targetDir)) {
-        fs.copyFileSync('app-icon.png', path.join(targetDir, 'ic_launcher.png'));
-        fs.copyFileSync('app-icon.png', path.join(targetDir, 'ic_launcher_round.png'));
-        fs.copyFileSync('app-icon.png', path.join(targetDir, 'ic_launcher_foreground.png'));
-      }
+  for (const [folder, size] of Object.entries(mipmapSizes)) {
+    const targetDir = path.join(resDir, folder);
+    if (fs.existsSync(targetDir)) {
+      const outPng = path.join(targetDir, 'ic_launcher.png');
+      const outRound = path.join(targetDir, 'ic_launcher_round.png');
+      const outFg = path.join(targetDir, 'ic_launcher_foreground.png');
+
+      execSync(`ffmpeg -y -i app-icon.jpg -vf "scale=${size}:${size}" "${outPng}"`, { stdio: 'ignore' });
+      fs.copyFileSync(outPng, outRound);
+      fs.copyFileSync(outPng, outFg);
     }
+  }
 
-    // Remove default adaptive vector XML so Android uses our custom icon directly
-    const anyDpiDir = path.join(resDir, 'mipmap-anydpi-v26');
+  // Delete adaptive vector icon folders so Android uses our PNG icon directly
+  for (const dirName of ['mipmap-anydpi-v26', 'mipmap-anydpi']) {
+    const anyDpiDir = path.join(resDir, dirName);
     if (fs.existsSync(anyDpiDir)) {
       fs.rmSync(anyDpiDir, { recursive: true, force: true });
+      console.log(`✅ Removed ${dirName} so custom icon is used`);
     }
-    console.log('Custom Game Icon successfully applied to all Android mipmap folders!');
-  } catch (err) {
-    console.error('Icon setup error:', err);
   }
+  console.log('✅ Custom Game Icon applied to all mipmap folders!');
+} else {
+  console.error('❌ app-icon.jpg not found during build!');
+  process.exit(1);
 }
