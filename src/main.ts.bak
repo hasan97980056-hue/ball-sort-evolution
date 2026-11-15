@@ -1,0 +1,694 @@
+import { type BoardState, TUBE_CAPACITY } from './state';
+import { generateSolvableLevel } from './generator';
+import { executeMove, isGameWon } from './logic';
+import { solveBoard } from './solver';
+
+const BALL_PALETTE: Record<number, { light: string; main: string; dark: string; glow: string }> = {
+    1: { light: '#FFAB73', main: '#FF6B00', dark: '#A83800', glow: '#FF7B1A' }, // Orange
+    2: { light: '#FF85D0', main: '#FF1E96', dark: '#9E0054', glow: '#FF38A8' }, // Pink
+    3: { light: '#FFF380', main: '#FFD000', dark: '#B27D00', glow: '#FFE033' }, // Yellow
+    4: { light: '#6EB5FF', main: '#0066FF', dark: '#002B80', glow: '#3388FF' }, // Blue
+    5: { light: '#D88CFF', main: '#9B1FE8', dark: '#4A0082', glow: '#B84DFF' }, // Purple
+    6: { light: '#7DFF8B', main: '#00C82B', dark: '#006411', glow: '#26E64C' }, // Green
+    7: { light: '#8CFFFF', main: '#00D2E6', dark: '#006B7A', glow: '#33ECFF' }, // Cyan
+    8: { light: '#FF8080', main: '#FF1726', dark: '#990009', glow: '#FF404C' }, // Red
+    9: { light: '#C8A98E', main: '#8D5B3C', dark: '#4A2A18', glow: '#A87454' }, // Brown
+    10: { light: '#B2FF59', main: '#64DD17', dark: '#2E7D32', glow: '#76FF03' }, // Lime
+};
+
+interface TubeRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+interface FlyingBall {
+    colorId: number;
+    x: number;
+    y: number;
+    targetTube: number;
+}
+
+// Completely disable double-tap zoom and page scrolling
+document.documentElement.style.cssText = 'margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#090418; touch-action:none;';
+document.body.style.cssText = 'margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#090418; font-family:system-ui,-apple-system,sans-serif; user-select:none; -webkit-user-select:none; touch-action:none;';
+
+// Prevent double-tap zoom gesture in mobile browsers
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) {
+        e.preventDefault();
+    }
+    lastTouchEnd = now;
+}, { passive: false });
+
+const app = document.querySelector<HTMLDivElement>('#app')!;
+app.innerHTML = '';
+app.style.cssText = `
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    background: radial-gradient(circle at 50% 35%, #231557 0%, #10072e 60%, #070217 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: stretch;
+    overflow: hidden;
+    touch-action: none;
+`;
+
+// 1. TOP HUD BAR
+const topBar = document.createElement('div');
+topBar.style.cssText = `
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 14px 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    z-index: 10;
+`;
+
+const coinBadge = document.createElement('div');
+coinBadge.style.cssText = `
+    background: linear-gradient(180deg, #5c38b8 0%, #381d80 100%);
+    border: 2px solid #7c56e0;
+    border-radius: 999px;
+    padding: 4px 12px 4px 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #fff;
+    font-weight: 800;
+    font-size: 16px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+`;
+
+const levelContainer = document.createElement('div');
+levelContainer.style.cssText = `
+    background: rgba(8, 4, 24, 0.85);
+    border: 1.5px solid rgba(255,255,255,0.18);
+    border-radius: 999px;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 18px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+`;
+
+const prevLvlBtn = document.createElement('button');
+prevLvlBtn.innerText = '◀';
+prevLvlBtn.style.cssText = 'background:none;border:none;color:#b29aff;font-size:15px;cursor:pointer;padding:4px 8px;touch-action:manipulation;';
+
+const levelTitle = document.createElement('span');
+levelTitle.style.cssText = 'min-width: 82px; text-align: center;';
+levelTitle.innerText = 'Level 1';
+
+const nextLvlBtn = document.createElement('button');
+nextLvlBtn.innerText = '▶';
+nextLvlBtn.style.cssText = 'background:none;border:none;color:#b29aff;font-size:15px;cursor:pointer;padding:4px 8px;touch-action:manipulation;';
+
+levelContainer.append(prevLvlBtn, levelTitle, nextLvlBtn);
+topBar.append(coinBadge, levelContainer);
+app.appendChild(topBar);
+
+// 2. MIDDLE CANVAS WRAPPER
+const canvasWrapper = document.createElement('div');
+canvasWrapper.style.cssText = `
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+`;
+
+const canvas = document.createElement('canvas');
+canvas.style.cssText = `
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    display: block;
+`;
+canvasWrapper.appendChild(canvas);
+app.appendChild(canvasWrapper);
+const ctx = canvas.getContext('2d')!;
+
+// 3. BOTTOM ACTION BAR
+const bottomBar = document.createElement('div');
+bottomBar.style.cssText = `
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 18px max(14px, env(safe-area-inset-bottom));
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    z-index: 10;
+`;
+
+const rightControlsGroup = document.createElement('div');
+rightControlsGroup.style.cssText = 'display: flex; gap: 16px; align-items: center;';
+
+function createActionButton(label: string, badgeText?: string, costText?: string) {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position: relative; display: flex; flex-direction: column; align-items: center;';
+
+    const btn = document.createElement('button');
+    btn.innerHTML = label;
+    btn.style.cssText = `
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        border: 2px solid #a688ff;
+        background: radial-gradient(circle at 35% 28%, #9b78ff 0%, #6038d1 62%, #401f9c 100%);
+        color: white;
+        font-size: 22px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 5px 12px rgba(0,0,0,0.55), inset 0 2px 4px rgba(255,255,255,0.45);
+        cursor: pointer;
+        padding: 0;
+        touch-action: manipulation;
+    `;
+
+    let badgeEl: HTMLSpanElement | null = null;
+    if (badgeText) {
+        badgeEl = document.createElement('span');
+        badgeEl.innerText = badgeText;
+        badgeEl.style.cssText = `
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: linear-gradient(180deg, #2ee856 0%, #14a834 100%);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 800;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #160c38;
+        `;
+        wrapper.appendChild(badgeEl);
+    }
+
+    wrapper.appendChild(btn);
+
+    if (costText) {
+        const costBadge = document.createElement('span');
+        costBadge.innerText = `🪙 ${costText}`;
+        costBadge.style.cssText = `
+            margin-top: -8px;
+            background: linear-gradient(180deg, #ffcf33 0%, #e08600 100%);
+            color: #2b1400;
+            font-size: 10px;
+            font-weight: 900;
+            padding: 1px 7px;
+            border-radius: 999px;
+            border: 1.5px solid #fff3c4;
+            z-index: 2;
+        `;
+        wrapper.appendChild(costBadge);
+    }
+
+    return { wrapper, btn, badgeEl };
+}
+
+const restartCtrl = createActionButton('↻');
+const undoCtrl = createActionButton('↩', '5');
+const shuffleCtrl = createActionButton('🔀', '2');
+const addTubeCtrl = createActionButton('+🧪', undefined, '900');
+
+rightControlsGroup.append(undoCtrl.wrapper, shuffleCtrl.wrapper, addTubeCtrl.wrapper);
+bottomBar.append(restartCtrl.wrapper, rightControlsGroup);
+app.appendChild(bottomBar);
+
+// 4. WIN MODAL OVERLAY
+const winModal = document.createElement('div');
+winModal.style.cssText = `
+    position: absolute;
+    inset: 0;
+    background: rgba(6, 2, 20, 0.84);
+    backdrop-filter: blur(6px);
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 50;
+    color: white;
+`;
+winModal.innerHTML = `
+    <div style="background: linear-gradient(180deg, #321b7a 0%, #180b42 100%); border: 2px solid #7c56e0; border-radius: 24px; padding: 26px 32px; text-align: center; box-shadow: 0 12px 35px rgba(0,0,0,0.75); max-width: 82vw;">
+        <div style="font-size: 46px; margin-bottom: 8px;">🏆</div>
+        <h2 id="winTitle" style="margin: 0 0 8px; font-size: 25px; color: #ffd700;">LEVEL COMPLETE!</h2>
+        <p style="margin: 0 0 18px; color: #d0c2ff; font-size: 15px; font-weight: 600;">+50 Coins Reward 🪙</p>
+        <button id="nextLevelModalBtn" style="background: linear-gradient(180deg, #2ae852 0%, #129c30 100%); border: 2px solid #98ffad; color: white; font-size: 18px; font-weight: 800; padding: 11px 30px; border-radius: 999px; cursor: pointer; box-shadow: 0 6px 16px rgba(18,156,48,0.5);">NEXT LEVEL ▶</button>
+    </div>
+`;
+app.appendChild(winModal);
+
+// GAME STATE
+let currentLevel = Number(localStorage.getItem('bs_level') || '1');
+let coins = Number(localStorage.getItem('bs_coins') || '7825');
+let board: BoardState = [];
+let initialBoard: BoardState = [];
+let history: BoardState[] = [];
+let selectedTube: number | null = null;
+let flyingBall: FlyingBall | null = null;
+let undosLeft = 5;
+let hintsLeft = 2;
+let extraTubeAdded = false;
+let cssWidth = window.innerWidth;
+let cssHeight = 420;
+
+function cloneBoard(b: BoardState): BoardState {
+    return b.map(t => [...t]);
+}
+
+function updateHUD() {
+    coinBadge.innerHTML = `<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:linear-gradient(180deg,#ffe066,#e69500);color:#593300;font-size:12px;font-weight:900;border:1.5px solid #fff6cc;">$</span><span>${coins}</span>`;
+    levelTitle.innerText = `Level ${currentLevel}`;
+    if (undoCtrl.badgeEl) undoCtrl.badgeEl.innerText = String(undosLeft);
+    if (shuffleCtrl.badgeEl) shuffleCtrl.badgeEl.innerText = String(hintsLeft);
+    localStorage.setItem('bs_level', String(currentLevel));
+    localStorage.setItem('bs_coins', String(coins));
+}
+
+function syncViewportBox() {
+    const vv = window.visualViewport;
+    if (vv) {
+        app.style.width = `${vv.width}px`;
+        app.style.height = `${vv.height}px`;
+        app.style.left = `${vv.offsetLeft}px`;
+        app.style.top = `${vv.offsetTop}px`;
+    } else {
+        app.style.width = `${window.innerWidth}px`;
+        app.style.height = `${window.innerHeight}px`;
+        app.style.left = '0px';
+        app.style.top = '0px';
+    }
+    const rect = canvasWrapper.getBoundingClientRect();
+    cssWidth = Math.max(260, rect.width || window.innerWidth);
+    cssHeight = Math.max(240, rect.height || (window.innerHeight - 150));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render();
+}
+
+window.addEventListener('resize', syncViewportBox);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewportBox);
+    window.visualViewport.addEventListener('scroll', syncViewportBox);
+}
+
+function startLevel(lvl: number) {
+    currentLevel = Math.max(1, lvl);
+    const generated = generateSolvableLevel(currentLevel);
+    board = generated.board;
+    initialBoard = cloneBoard(board);
+    history = [];
+    selectedTube = null;
+    flyingBall = null;
+    undosLeft = 5;
+    hintsLeft = 2;
+    extraTubeAdded = false;
+    winModal.style.display = 'none';
+    updateHUD();
+    syncViewportBox();
+}
+
+function getTubeRects(): TubeRect[] {
+    const numTubes = board.length;
+    if (numTubes === 0) return [];
+
+    const rows = numTubes > 5 ? 2 : 1;
+    const topCount = rows === 2 ? Math.ceil(numTubes / 2) : numTubes;
+    const bottomCount = rows === 2 ? numTubes - topCount : 0;
+    const maxCols = Math.max(topCount, bottomCount);
+
+    const sidePadding = 16;
+    const gapX = maxCols >= 6 ? 10 : 14;
+    const availableW = cssWidth - sidePadding * 2 - (maxCols - 1) * gapX;
+    const maxWByCols = Math.floor(availableW / maxCols);
+
+    const topLiftSpace = 30;
+    const bottomPadding = 10;
+    const gapY = rows === 2 ? 34 : 0;
+    const availableH = cssHeight - topLiftSpace - bottomPadding - (rows - 1) * gapY;
+    const maxTubeH = Math.floor(availableH / rows);
+
+    // 3.55 aspect ratio stacks 4 spheres touching snugly with a clean top glass lip
+    const ratio = 3.55;
+    const maxWByHeight = Math.floor(maxTubeH / ratio);
+    const idealMaxW = rows === 2 ? 50 : 58;
+    const tubeWidth = Math.max(32, Math.min(idealMaxW, maxWByCols, maxWByHeight));
+    const tubeHeight = Math.floor(tubeWidth * ratio);
+
+    const totalGridH = rows * tubeHeight + (rows - 1) * gapY;
+    const startY = topLiftSpace + Math.max(0, Math.floor((availableH - totalGridH + (rows - 1) * gapY) / 2));
+
+    const rects: TubeRect[] = [];
+    for (let i = 0; i < numTubes; i++) {
+        const isBottom = rows === 2 && i >= topCount;
+        const rowIdx = isBottom ? 1 : 0;
+        const colIdx = isBottom ? i - topCount : i;
+        const colsInRow = isBottom ? bottomCount : topCount;
+
+        const rowW = colsInRow * tubeWidth + (colsInRow - 1) * gapX;
+        const startX = Math.floor((cssWidth - rowW) / 2);
+
+        rects.push({
+            x: startX + colIdx * (tubeWidth + gapX),
+            y: startY + rowIdx * (tubeHeight + gapY),
+            width: tubeWidth,
+            height: tubeHeight,
+        });
+    }
+    return rects;
+}
+
+function getBallPosition(rect: TubeRect, ballIdx: number, isLifted: boolean) {
+    const ballRadius = rect.width * 0.425;
+    const bottomRadius = rect.width / 2;
+    const cx = rect.x + rect.width / 2;
+    if (isLifted) {
+        return { cx, cy: rect.y - ballRadius - 9, ballRadius };
+    }
+    const bottomBallCy = rect.y + rect.height - bottomRadius + (bottomRadius - ballRadius - 3);
+    const stepY = ballRadius * 1.98;
+    return { cx, cy: bottomBallCy - ballIdx * stepY, ballRadius };
+}
+
+function draw3DBall(cx: number, cy: number, radius: number, colorId: number) {
+    const palette = BALL_PALETTE[colorId] || BALL_PALETTE[1];
+    ctx.save();
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.42)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 2;
+
+    const grad = ctx.createRadialGradient(
+        cx - radius * 0.32,
+        cy - radius * 0.35,
+        radius * 0.08,
+        cx,
+        cy,
+        radius
+    );
+    grad.addColorStop(0, palette.light);
+    grad.addColorStop(0.55, palette.main);
+    grad.addColorStop(1, palette.dark);
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.shadowColor = 'transparent';
+
+    ctx.save();
+    ctx.translate(cx - radius * 0.34, cy - radius * 0.36);
+    ctx.rotate(-Math.PI / 4);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius * 0.32, radius * 0.18, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.68)';
+    ctx.fill();
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(cx - radius * 0.12, cy - radius * 0.56, radius * 0.07, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawTubeAndBalls(rect: TubeRect, tube: number[], isSelected: boolean) {
+    const { x, y, width, height } = rect;
+    const rimRy = Math.max(4.2, width * 0.12);
+    const bottomRadius = width / 2;
+
+    const isCompleted = tube.length === TUBE_CAPACITY && tube.every(b => b === tube[0]);
+    const completedColor = isCompleted ? (BALL_PALETTE[tube[0]]?.glow || '#5AC8FA') : null;
+    const strokeColor = completedColor || (isSelected ? '#66E0FF' : 'rgba(225, 232, 255, 0.76)');
+
+    // 1. Back half of top oval rim
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(x + width / 2, y, width / 2, rimRy, 0, Math.PI, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(200, 215, 255, 0.42)';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Glass tube body fill
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + height - bottomRadius);
+    ctx.arc(x + bottomRadius, y + height - bottomRadius, bottomRadius, Math.PI, 0, true);
+    ctx.lineTo(x + width, y);
+
+    const glassGrad = ctx.createLinearGradient(x, y, x + width, y);
+    glassGrad.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
+    glassGrad.addColorStop(0.25, 'rgba(255, 255, 255, 0.04)');
+    glassGrad.addColorStop(0.8, 'rgba(255, 255, 255, 0.02)');
+    glassGrad.addColorStop(1, 'rgba(255, 255, 255, 0.12)');
+    ctx.fillStyle = glassGrad;
+    ctx.fill();
+    ctx.restore();
+
+    // 3. Tightly stacked 3D balls inside tube
+    tube.forEach((colorId, idx) => {
+        const isTopSelectedBall = isSelected && idx === tube.length - 1;
+        const pos = getBallPosition(rect, idx, isTopSelectedBall);
+        draw3DBall(pos.cx, pos.cy, pos.ballRadius, colorId);
+    });
+
+    // 4. Vertical glass highlight line
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x + width * 0.15, y + rimRy + 6);
+    ctx.lineTo(x + width * 0.15, y + height - bottomRadius - 4);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+
+    // 5. Outer tube border & top oval lip
+    ctx.save();
+    if (completedColor || isSelected) {
+        ctx.shadowColor = strokeColor;
+        ctx.shadowBlur = isCompleted ? 14 : 10;
+    }
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = isCompleted || isSelected ? 2.8 : 2;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + height - bottomRadius);
+    ctx.arc(x + bottomRadius, y + height - bottomRadius, bottomRadius, Math.PI, 0, true);
+    ctx.lineTo(x + width, y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(x + width / 2, y, width / 2, rimRy, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+}
+
+function render() {
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+    const rects = getTubeRects();
+    board.forEach((tube, idx) => {
+        drawTubeAndBalls(rects[idx], tube, selectedTube === idx);
+    });
+    if (flyingBall && rects.length > 0) {
+        const radius = rects[0].width * 0.425;
+        draw3DBall(flyingBall.x, flyingBall.y, radius, flyingBall.colorId);
+    }
+}
+
+function animateMove(fromIdx: number, toIdx: number, nextBoard: BoardState) {
+    const rects = getTubeRects();
+    const fromRect = rects[fromIdx];
+    const toRect = rects[toIdx];
+    const movingColor = board[fromIdx][board[fromIdx].length - 1];
+
+    const startPos = getBallPosition(fromRect, board[fromIdx].length - 1, true);
+    const endBallIdx = board[toIdx].length;
+    const endPos = getBallPosition(toRect, endBallIdx, false);
+
+    // Temporarily remove top ball from source while flying
+    history.push(cloneBoard(board));
+    board[fromIdx].pop();
+    selectedTube = null;
+
+    const startTime = performance.now();
+    const duration = 160;
+
+    function step(now: number) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const ease = 1 - Math.pow(1 - t, 3);
+        const arcPeak = Math.min(startPos.cy, toRect.y - startPos.ballRadius - 14) - 18;
+
+        const currX = startPos.cx + (endPos.cx - startPos.cx) * ease;
+        const currY = (1 - ease) * (1 - ease) * startPos.cy + 2 * (1 - ease) * ease * arcPeak + ease * ease * endPos.cy;
+
+        flyingBall = { colorId: movingColor, x: currX, y: currY, targetTube: toIdx };
+        render();
+
+        if (t < 1) {
+            requestAnimationFrame(step);
+        } else {
+            flyingBall = null;
+            board = nextBoard;
+            render();
+
+            if (isGameWon(board)) {
+                coins += 50;
+                updateHUD();
+                const winTitle = document.getElementById('winTitle');
+                if (winTitle) winTitle.innerText = `LEVEL ${currentLevel} COMPLETE!`;
+                setTimeout(() => {
+                    winModal.style.display = 'flex';
+                }, 200);
+            }
+        }
+    }
+
+    requestAnimationFrame(step);
+}
+
+// TOUCH / POINTER INTERACTION
+canvas.addEventListener('pointerdown', (e) => {
+    if (flyingBall) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const px = e.clientX - canvasRect.left;
+    const py = e.clientY - canvasRect.top;
+
+    const rects = getTubeRects();
+    let clicked = -1;
+    for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        if (px >= r.x - 6 && px <= r.x + r.width + 6 && py >= r.y - 32 && py <= r.y + r.height + 8) {
+            clicked = i;
+            break;
+        }
+    }
+
+    if (clicked === -1) return;
+
+    if (selectedTube === null) {
+        if (board[clicked].length > 0) {
+            selectedTube = clicked;
+            render();
+        }
+    } else if (selectedTube === clicked) {
+        selectedTube = null;
+        render();
+    } else {
+        const nextBoard = executeMove(board, selectedTube, clicked);
+        if (nextBoard !== board) {
+            animateMove(selectedTube, clicked, nextBoard);
+        } else {
+            selectedTube = board[clicked].length > 0 ? clicked : null;
+            render();
+        }
+    }
+});
+
+// BUTTON ACTIONS
+restartCtrl.btn.addEventListener('click', () => {
+    if (flyingBall) return;
+    board = cloneBoard(initialBoard);
+    history = [];
+    selectedTube = null;
+    render();
+});
+
+undoCtrl.btn.addEventListener('click', () => {
+    if (flyingBall || history.length === 0 || undosLeft <= 0) return;
+    board = history.pop()!;
+    undosLeft--;
+    selectedTube = null;
+    updateHUD();
+    render();
+});
+
+shuffleCtrl.btn.addEventListener('click', () => {
+    if (flyingBall || hintsLeft <= 0) return;
+    const sol = solveBoard(board);
+    if (sol && sol.length > 1) {
+        history.push(cloneBoard(board));
+        board = sol[1];
+        hintsLeft--;
+        selectedTube = null;
+        updateHUD();
+        render();
+        if (isGameWon(board)) {
+            coins += 50;
+            updateHUD();
+            winModal.style.display = 'flex';
+        }
+        return;
+    }
+
+    for (let from = 0; from < board.length; from++) {
+        for (let to = 0; to < board.length; to++) {
+            if (from === to) continue;
+            if (board[to].length === 0 && new Set(board[from]).size === 1) continue;
+            const next = executeMove(board, from, to);
+            if (next !== board) {
+                animateMove(from, to, next);
+                hintsLeft--;
+                updateHUD();
+                return;
+            }
+        }
+    }
+});
+
+addTubeCtrl.btn.addEventListener('click', () => {
+    if (flyingBall || extraTubeAdded || coins < 900) return;
+    coins -= 900;
+    extraTubeAdded = true;
+    board = [...board.map(t => [...t]), []];
+    selectedTube = null;
+    updateHUD();
+    render();
+});
+
+prevLvlBtn.addEventListener('click', () => startLevel(currentLevel - 1));
+nextLvlBtn.addEventListener('click', () => startLevel(currentLevel + 1));
+
+document.getElementById('nextLevelModalBtn')?.addEventListener('click', () => {
+    startLevel(currentLevel + 1);
+});
+
+requestAnimationFrame(() => {
+    startLevel(currentLevel);
+});
