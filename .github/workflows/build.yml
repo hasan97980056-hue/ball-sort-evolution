@@ -36,6 +36,7 @@ jobs:
         run: |
           npx cap add android || true
           npx cap sync android
+          node configure-admob.cjs
 
       - name: Build Debug APK with Gradle
         run: |

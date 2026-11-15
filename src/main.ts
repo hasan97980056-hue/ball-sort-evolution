@@ -1,3 +1,4 @@
+import { AdMob, BannerAdPosition, BannerAdSize } from '@capacitor-community/admob';
 import { DEFAULT_COINS } from './state';
 import {
     type BoardState,
@@ -601,6 +602,7 @@ function showWinModalOverlay(rewardGranted: boolean, rewardAmount: number) {
             : 'Already Cleared (+0 Coins) ✅';
     }
     winModal.style.display = 'flex';
+    (window as any).triggerWinAd?.();
 }
 
 function handleLevelWon() {
@@ -1103,4 +1105,34 @@ requestAnimationFrame(() => {
     updateHUD();
     syncViewportBox();
     openStartMenu();
+});
+
+// --- Safe Non-Blocking AdMob Integration ---
+(window as any).triggerWinAd = async () => {
+    try {
+        await (AdMob as any).prepareInterstitial({
+            adId: 'ca-app-pub-3940256099942544/1033173712',
+            isTesting: true,
+        });
+        await (AdMob as any).showInterstitial();
+    } catch (e) {
+        console.error('Interstitial error:', e);
+    }
+};
+
+window.addEventListener('load', () => {
+    setTimeout(async () => {
+        try {
+            await (AdMob as any).initialize({});
+            await (AdMob as any).showBanner({
+                adId: 'ca-app-pub-3940256099942544/6300978111',
+                position: BannerAdPosition.BOTTOM_CENTER,
+                size: BannerAdSize.BANNER,
+                margin: 0,
+                isTesting: true,
+            });
+        } catch (e) {
+            console.error('AdMob init error:', e);
+        }
+    }, 1500);
 });
