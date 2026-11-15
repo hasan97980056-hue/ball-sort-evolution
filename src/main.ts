@@ -85,7 +85,7 @@ const topBar = document.createElement('div');
 topBar.style.cssText = `
     width: 100%;
     box-sizing: border-box;
-    padding: 10px 14px 4px;
+    padding: 38px 14px 6px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1056,11 +1056,22 @@ continueMenuBtn.addEventListener('click', () => {
 
 newGameMenuBtn.addEventListener('click', () => {
     const latest = loadSavedProgress();
-    const confirmCoinsEl = document.getElementById('confirmCoinsAmount');
-    if (confirmCoinsEl) {
-        confirmCoinsEl.innerText = String(latest.coins);
+    if (latest.highestUnlockedLevel === 1 && latest.clearedLevels.length === 0) {
+        startMenuOverlay.style.display = 'none';
+        winModal.style.display = 'none';
+        const generated = generateSolvableLevel(1);
+        const freshProgress = startNewGameProgress(latest, generated.board);
+        freshProgress.coins = DEFAULT_COINS;
+        applyProgressToRuntime(freshProgress);
+        updateHUD();
+        syncViewportBox();
+    } else {
+        const confirmCoinsEl = document.getElementById('confirmCoinsAmount');
+        if (confirmCoinsEl) {
+            confirmCoinsEl.innerText = String(DEFAULT_COINS);
+        }
+        confirmResetModal.style.display = 'flex';
     }
-    confirmResetModal.style.display = 'flex';
 });
 
 document.getElementById('cancelNewGameBtn')?.addEventListener('click', () => {
@@ -1075,6 +1086,7 @@ document.getElementById('confirmNewGameBtn')?.addEventListener('click', () => {
     const latest = loadSavedProgress();
     const generated = generateSolvableLevel(1);
     const freshProgress = startNewGameProgress(latest, generated.board);
+    freshProgress.coins = DEFAULT_COINS;
 
     applyProgressToRuntime(freshProgress);
     updateHUD();
