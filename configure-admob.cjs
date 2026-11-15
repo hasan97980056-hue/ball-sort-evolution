@@ -25,7 +25,7 @@ if (fs.existsSync(stringsPath)) {
   }
 }
 
-// 3. Copy pre-generated PNG icons into Android mipmap folders using pure Node.js
+// 3. Copy pre-generated PNG icons into Android mipmap folders
 const resDir = 'android/app/src/main/res';
 const folders = ['mipmap-mdpi', 'mipmap-hdpi', 'mipmap-xhdpi', 'mipmap-xxhdpi', 'mipmap-xxxhdpi'];
 
@@ -39,13 +39,56 @@ for (const folder of folders) {
   }
 }
 
-// Delete adaptive vector XML folders so Android uses our custom PNG icons directly
 for (const dirName of ['mipmap-anydpi-v26', 'mipmap-anydpi']) {
   const anyDpiDir = path.join(resDir, dirName);
   if (fs.existsSync(anyDpiDir)) {
     fs.rmSync(anyDpiDir, { recursive: true, force: true });
-    console.log(`✅ Removed ${dirName} so custom icon is used`);
+  }
+}
+console.log('✅ All Custom PNG Game Icons applied successfully!');
+
+// 4. Lower minSdkVersion in variables.gradle & plugin gradle files for backward compatibility
+const gradleFilesToPatch = [
+  'android/variables.gradle',
+  'node_modules/@capacitor/android/capacitor/build.gradle',
+  'node_modules/@capacitor-community/admob/android/build.gradle'
+];
+
+for (const gFile of gradleFilesToPatch) {
+  if (fs.existsSync(gFile)) {
+    let content = fs.readFileSync(gFile, 'utf8');
+    content = content.replace(/minSdkVersion\s*=\s*\d+/g, 'minSdkVersion = 21');
+    content = content.replace(/minSdk\s+\d+/g, 'minSdk 21');
+    fs.writeFileSync(gFile, content, 'utf8');
+    console.log(`✅ Updated minSdkVersion to 21 in ${gFile}`);
   }
 }
 
-console.log('✅ All Custom PNG Game Icons applied successfully!');
+// 5. Enable V1 + V2 APK Signing and MultiDex in android/app/build.gradle for Android 9 / MIUI 12
+const appBuildGradlePath = 'android/app/build.gradle';
+if (fs.existsSync(appBuildGradlePath)) {
+  let appGradle = fs.readFileSync(appBuildGradlePath, 'utf8');
+  if (!appGradle.includes('v1SigningEnabled')) {
+    const compatBlock = `
+android {
+    defaultConfig {
+        multiDexEnabled true
+    }
+    signingConfigs {
+        debug {
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+`;
+    appGradle += '\n' + compatBlock;
+    fs.writeFileSync(appBuildGradlePath, appGradle, 'utf8');
+    console.log('✅ Enabled V1 + V2 APK Signing and MultiDex for Android 9 compatibility!');
+  }
+}
