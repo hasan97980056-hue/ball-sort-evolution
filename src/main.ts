@@ -1,3 +1,4 @@
+import { DEFAULT_COINS } from './state';
 import {
     type BoardState,
     type SavedGameProgress,
