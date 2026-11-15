@@ -235,7 +235,7 @@ const bottomBar = document.createElement('div');
 bottomBar.style.cssText = `
     width: 100%;
     box-sizing: border-box;
-    padding: 6px 18px max(14px, env(safe-area-inset-bottom));
+    padding: 6px 18px calc(78px + env(safe-area-inset-bottom, 16px));
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -559,7 +559,7 @@ function syncViewportBox() {
     }
     const rect = canvasWrapper.getBoundingClientRect();
     cssWidth = Math.max(260, rect.width || window.innerWidth);
-    cssHeight = Math.max(240, rect.height || (window.innerHeight - 150));
+    cssHeight = Math.max(240, rect.height || (window.innerHeight - 225));
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(cssWidth * dpr);
     canvas.height = Math.round(cssHeight * dpr);
@@ -1108,8 +1108,18 @@ requestAnimationFrame(() => {
 });
 
 // --- Safe Non-Blocking AdMob Integration ---
+let levelsClearedForAd = Number(localStorage.getItem('bse_ad_win_count') || '0');
+
 (window as any).triggerWinAd = async () => {
     try {
+        levelsClearedForAd++;
+        localStorage.setItem('bse_ad_win_count', String(levelsClearedForAd));
+
+        // Sirf har 3 level clear hone par ad dikhao (3, 6, 9, 12...)
+        if (levelsClearedForAd % 3 !== 0) {
+            return;
+        }
+
         await (AdMob as any).prepareInterstitial({
             adId: 'ca-app-pub-3940256099942544/1033173712',
             isTesting: true,
@@ -1131,8 +1141,9 @@ window.addEventListener('load', () => {
                 margin: 0,
                 isTesting: true,
             });
+            window.dispatchEvent(new Event('resize'));
         } catch (e) {
             console.error('AdMob init error:', e);
         }
-    }, 1500);
+    }, 1200);
 });
