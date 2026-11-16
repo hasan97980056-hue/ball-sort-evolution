@@ -43,7 +43,7 @@ export const PROGRESS_STORAGE_KEY = 'bs_evolution_save_v1';
 export const LEGACY_LEVEL_KEY = 'bs_level';
 export const LEGACY_COINS_KEY = 'bs_coins';
 
-export const DEFAULT_COINS = 7825;
+export const DEFAULT_COINS = 5000;
 export const DEFAULT_UNDOS = 5;
 export const DEFAULT_HINTS = 2;
 export const LEVEL_CLEAR_REWARD = 50;
@@ -112,7 +112,7 @@ export function createDefaultProgress(startingCoins: number = DEFAULT_COINS): Sa
         currentBoard: null,
         initialBoard: null,
         history: [],
-        coins: safeCoins,
+        coins: (safeCoins >= 0 ? DEFAULT_COINS : DEFAULT_COINS),
         undosLeft: DEFAULT_UNDOS,
         hintsLeft: DEFAULT_HINTS,
         extraTubeAdded: false,

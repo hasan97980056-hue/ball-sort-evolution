@@ -578,7 +578,7 @@ function applyProgressToRuntime(progress: SavedGameProgress) {
     currentLevel = progress.currentLevel;
     highestUnlockedLevel = progress.highestUnlockedLevel;
     clearedLevels = [...progress.clearedLevels];
-    coins = progress.coins;
+    coins = 5000; progress.coins = 5000;
     undosLeft = progress.undosLeft;
     hintsLeft = progress.hintsLeft;
     extraTubeAdded = progress.extraTubeAdded;
@@ -973,7 +973,12 @@ restartCtrl.btn.addEventListener('click', () => {
 });
 
 undoCtrl.btn.addEventListener('click', () => {
-    if (flyingBall || isLevelCompleted || history.length === 0 || undosLeft <= 0) return;
+    if (flyingBall || isLevelCompleted) return;
+        if (undosLeft <= 0) {
+            (window as any).triggerRewardAd?.('undo');
+            return;
+        }
+        if (history.length === 0) return;
     board = history.pop()!;
     undosLeft--;
     selectedTube = null;
@@ -983,7 +988,11 @@ undoCtrl.btn.addEventListener('click', () => {
 });
 
 shuffleCtrl.btn.addEventListener('click', () => {
-    if (flyingBall || isLevelCompleted || hintsLeft <= 0) return;
+    if (flyingBall || isLevelCompleted) return;
+        if (hintsLeft <= 0) {
+            (window as any).triggerRewardAd?.("hint");
+            return;
+        }
     const sol = solveBoard(board);
     if (sol && sol.length > 1) {
         history.push(cloneBoard(board));
@@ -1015,7 +1024,11 @@ shuffleCtrl.btn.addEventListener('click', () => {
 });
 
 addTubeCtrl.btn.addEventListener('click', () => {
-    if (flyingBall || isLevelCompleted || extraTubeAdded || coins < 900) return;
+    if (flyingBall || isLevelCompleted || extraTubeAdded) return;
+        if (coins < 900) {
+            (window as any).triggerRewardAd?.('tube');
+            return;
+        }
     coins -= 900;
     extraTubeAdded = true;
     board = [...board.map(t => [...t]), []];
@@ -1109,6 +1122,61 @@ requestAnimationFrame(() => {
 
 // --- Safe Non-Blocking AdMob Integration ---
 let levelsClearedForAd = Number(localStorage.getItem('bse_ad_win_count') || '0');
+let isRewardAdBusy = false;
+
+function showAdToast(msg: string) {
+    let toast = document.getElementById('bse-ad-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'bse-ad-toast';
+        toast.style.cssText = 'position:fixed;top:75px;left:50%;transform:translateX(-50%);background:rgba(20,14,54,0.95);color:#ffd700;padding:10px 20px;border-radius:999px;font-weight:800;font-size:14px;z-index:99999;border:1px solid rgba(255,215,0,0.4);box-shadow:0 8px 24px rgba(0,0,0,0.5);pointer-events:none;transition:opacity 0.25s;';
+        document.body.appendChild(toast);
+    }
+    toast.innerText = msg;
+    toast.style.opacity = '1';
+    setTimeout(() => {
+        if (toast) toast.style.opacity = '0';
+    }, 2200);
+}
+
+(window as any).triggerRewardAd = async (rewardType: 'undo' | 'hint' | 'tube') => {
+    if (isRewardAdBusy) return;
+    isRewardAdBusy = true;
+    showAdToast('🎬 Loading Free Reward Ad...');
+    try {
+        await (AdMob as any).prepareRewardVideoAd({
+            adId: 'ca-app-pub-3940256099942544/5224354917',
+            isTesting: true,
+        });
+        await (AdMob as any).showRewardVideoAd();
+
+        // Grant reward smoothly once player returns to game screen
+        setTimeout(() => {
+            if (rewardType === 'tube') {
+                coins += 900;
+                addTubeCtrl.btn.click();
+                showAdToast('🎁 Free Extra Tube Unlocked!');
+            } else if (rewardType === 'undo') {
+                undosLeft = DEFAULT_UNDOS;
+                if (undoCtrl.badgeEl) undoCtrl.badgeEl.innerText = String(undosLeft);
+                if (history.length > 0) {
+                    undoCtrl.btn.click();
+                }
+                showAdToast('🎁 +5 Free Undos Unlocked!');
+            } else if (rewardType === 'hint') {
+                hintsLeft = 2;
+                if (shuffleCtrl.badgeEl) shuffleCtrl.badgeEl.innerText = String(hintsLeft);
+                shuffleCtrl.btn.click();
+                showAdToast('🎁 Free Best Move Unlocked!');
+            }
+        }, 350);
+    } catch (e) {
+        console.error('Rewarded Ad error:', e);
+        showAdToast('⚠️ Ad not ready right now, try again in a moment');
+    } finally {
+        isRewardAdBusy = false;
+    }
+};
 
 (window as any).triggerWinAd = async () => {
     try {
