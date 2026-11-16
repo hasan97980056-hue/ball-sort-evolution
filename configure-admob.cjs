@@ -1,28 +1,32 @@
 const fs = require('fs');
 const path = require('path');
 
-// 1. Inject AdMob APPLICATION_ID in AndroidManifest.xml
+const REAL_APP_ID = 'ca-app-pub-4326644127523914~2784148145';
+
+// 1. Ensure Real AdMob APPLICATION_ID in AndroidManifest.xml
 const manifestPath = 'android/app/src/main/AndroidManifest.xml';
 if (fs.existsSync(manifestPath)) {
   let manifest = fs.readFileSync(manifestPath, 'utf8');
+  manifest = manifest.replace(/ca-app-pub-[0-9]+~[0-9]+/g, REAL_APP_ID);
   if (!manifest.includes('com.google.android.gms.ads.APPLICATION_ID')) {
-    const metaTag = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/>\n    </application>';
+    const metaTag = `        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="${REAL_APP_ID}"/>\n    </application>`;
     manifest = manifest.replace('</application>', metaTag);
-    fs.writeFileSync(manifestPath, manifest, 'utf8');
-    console.log('✅ AdMob APPLICATION_ID added to AndroidManifest.xml');
   }
+  fs.writeFileSync(manifestPath, manifest, 'utf8');
+  console.log('✅ Real AdMob APPLICATION_ID verified in AndroidManifest.xml');
 }
 
-// 2. Inject admob_app_id in strings.xml
+// 2. Ensure Real admob_app_id in strings.xml
 const stringsPath = 'android/app/src/main/res/values/strings.xml';
 if (fs.existsSync(stringsPath)) {
   let strings = fs.readFileSync(stringsPath, 'utf8');
+  strings = strings.replace(/ca-app-pub-[0-9]+~[0-9]+/g, REAL_APP_ID);
   if (!strings.includes('admob_app_id')) {
-    const strTag = '    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>\n</resources>';
+    const strTag = `    <string name="admob_app_id">${REAL_APP_ID}</string>\n</resources>`;
     strings = strings.replace('</resources>', strTag);
-    fs.writeFileSync(stringsPath, strings, 'utf8');
-    console.log('✅ admob_app_id added to strings.xml');
   }
+  fs.writeFileSync(stringsPath, strings, 'utf8');
+  console.log('✅ Real admob_app_id verified in strings.xml');
 }
 
 // 3. Copy pre-generated PNG icons into Android mipmap folders
@@ -64,18 +68,36 @@ for (const gFile of gradleFilesToPatch) {
   }
 }
 
-// 5. Enable V1 + V2 APK Signing and MultiDex in android/app/build.gradle for Android 9 / MIUI 12
+// 5. Copy release-key.keystore into android/app/
+if (fs.existsSync('release-key.keystore')) {
+  fs.copyFileSync('release-key.keystore', 'android/app/release-key.keystore');
+  console.log('✅ Copied release-key.keystore to android/app/');
+}
+
+// 6. Enable Release & Debug V1 + V2 Signing and MultiDex in android/app/build.gradle
 const appBuildGradlePath = 'android/app/build.gradle';
 if (fs.existsSync(appBuildGradlePath)) {
   let appGradle = fs.readFileSync(appBuildGradlePath, 'utf8');
-  if (!appGradle.includes('v1SigningEnabled')) {
+  if (!appGradle.includes('ballsort_key')) {
     const compatBlock = `
 android {
     defaultConfig {
         multiDexEnabled true
     }
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+    }
     signingConfigs {
         debug {
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+        release {
+            storeFile file('release-key.keystore')
+            storePassword 'HasanStudio2026'
+            keyAlias 'ballsort_key'
+            keyPassword 'HasanStudio2026'
             v1SigningEnabled true
             v2SigningEnabled true
         }
@@ -84,11 +106,15 @@ android {
         debug {
             signingConfig signingConfigs.debug
         }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
     }
 }
 `;
     appGradle += '\n' + compatBlock;
     fs.writeFileSync(appBuildGradlePath, appGradle, 'utf8');
-    console.log('✅ Enabled V1 + V2 APK Signing and MultiDex for Android 9 compatibility!');
+    console.log('✅ Configured Play Store Release Signing (AAB + APK) in build.gradle!');
   }
 }

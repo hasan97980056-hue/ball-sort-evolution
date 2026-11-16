@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Play Store Release AAB & APK
 
 on:
   push:
@@ -36,17 +36,24 @@ jobs:
         run: |
           npx cap add android || true
           npx cap sync android
-      - name: Apply Custom Icon & AdMob Config
+
+      - name: Apply Custom Icon, Real AdMob & Release Signing Config
         run: node configure-admob.cjs
 
-      - name: Build Debug APK with Gradle
+      - name: Build Signed Play Store AAB & Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug || (sed -i 's/minSdkVersion = 21/minSdkVersion = 23/g' variables.gradle && ./gradlew assembleDebug) || (sed -i 's/minSdkVersion = 23/minSdkVersion = 24/g' variables.gradle && ./gradlew assembleDebug)
+          ./gradlew bundleRelease assembleRelease || (sed -i 's/minSdkVersion = 21/minSdkVersion = 23/g' variables.gradle && ./gradlew bundleRelease assembleRelease) || (sed -i 's/minSdkVersion = 23/minSdkVersion = 24/g' variables.gradle && ./gradlew bundleRelease assembleRelease)
 
-      - name: Upload APK Artifact
+      - name: Upload Play Store AAB (For Google Play Console)
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: playstore-release-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload Signed Release APK (For Phone Install)
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
