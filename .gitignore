@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Security: Never commit keystores
+*.keystore
+*.jks
+KEYSTORE_SECRET_BACKUP.txt

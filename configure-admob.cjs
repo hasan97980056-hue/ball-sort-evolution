@@ -49,9 +49,8 @@ for (const dirName of ['mipmap-anydpi-v26', 'mipmap-anydpi']) {
     fs.rmSync(anyDpiDir, { recursive: true, force: true });
   }
 }
-console.log('✅ All Custom PNG Game Icons applied successfully!');
 
-// 4. Lower minSdkVersion in variables.gradle & plugin gradle files for backward compatibility
+// 4. Lower minSdkVersion in variables.gradle & plugin gradle files
 const gradleFilesToPatch = [
   'android/variables.gradle',
   'node_modules/@capacitor/android/capacitor/build.gradle',
@@ -64,21 +63,14 @@ for (const gFile of gradleFilesToPatch) {
     content = content.replace(/minSdkVersion\s*=\s*\d+/g, 'minSdkVersion = 21');
     content = content.replace(/minSdk\s+\d+/g, 'minSdk 21');
     fs.writeFileSync(gFile, content, 'utf8');
-    console.log(`✅ Updated minSdkVersion to 21 in ${gFile}`);
   }
 }
 
-// 5. Copy release-key.keystore into android/app/
-if (fs.existsSync('release-key.keystore')) {
-  fs.copyFileSync('release-key.keystore', 'android/app/release-key.keystore');
-  console.log('✅ Copied release-key.keystore to android/app/');
-}
-
-// 6. Enable Release & Debug V1 + V2 Signing and MultiDex in android/app/build.gradle
+// 5. Configure Release Signing using Private Environment Variables (No Password in Code!)
 const appBuildGradlePath = 'android/app/build.gradle';
 if (fs.existsSync(appBuildGradlePath)) {
   let appGradle = fs.readFileSync(appBuildGradlePath, 'utf8');
-  if (!appGradle.includes('ballsort_key')) {
+  if (!appGradle.includes('KEYSTORE_PASSWORD')) {
     const compatBlock = `
 android {
     defaultConfig {
@@ -95,9 +87,9 @@ android {
         }
         release {
             storeFile file('release-key.keystore')
-            storePassword 'HasanStudio2026'
+            storePassword System.getenv("KEYSTORE_PASSWORD")
             keyAlias 'ballsort_key'
-            keyPassword 'HasanStudio2026'
+            keyPassword System.getenv("KEYSTORE_PASSWORD")
             v1SigningEnabled true
             v2SigningEnabled true
         }
@@ -115,6 +107,6 @@ android {
 `;
     appGradle += '\n' + compatBlock;
     fs.writeFileSync(appBuildGradlePath, appGradle, 'utf8');
-    console.log('✅ Configured Play Store Release Signing (AAB + APK) in build.gradle!');
+    console.log('✅ Configured Secure Environment-Based Release Signing!');
   }
 }

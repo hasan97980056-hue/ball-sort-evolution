@@ -37,14 +37,19 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      - name: Apply Custom Icon, Real AdMob & Release Signing Config
+      - name: Apply Custom Icon, Real AdMob & Secure Signing Config
         run: node configure-admob.cjs
 
       - name: Build Signed Play Store AAB & Release APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release-key.keystore
           cd android
           chmod +x gradlew
           ./gradlew bundleRelease assembleRelease || (sed -i 's/minSdkVersion = 21/minSdkVersion = 23/g' variables.gradle && ./gradlew bundleRelease assembleRelease) || (sed -i 's/minSdkVersion = 23/minSdkVersion = 24/g' variables.gradle && ./gradlew bundleRelease assembleRelease)
+          rm -f app/release-key.keystore
 
       - name: Upload Play Store AAB (For Google Play Console)
         uses: actions/upload-artifact@v4
