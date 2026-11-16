@@ -1145,8 +1145,8 @@ function showAdToast(msg: string) {
     showAdToast('🎬 Loading Free Reward Ad...');
     try {
         await (AdMob as any).prepareRewardVideoAd({
-            adId: 'ca-app-pub-3940256099942544/5224354917',
-            isTesting: true,
+            adId: 'ca-app-pub-4326644127523914/2449106226',
+            isTesting: false,
         });
         await (AdMob as any).showRewardVideoAd();
 
@@ -1189,8 +1189,8 @@ function showAdToast(msg: string) {
         }
 
         await (AdMob as any).prepareInterstitial({
-            adId: 'ca-app-pub-3940256099942544/1033173712',
-            isTesting: true,
+            adId: 'ca-app-pub-4326644127523914/5542173423',
+            isTesting: false,
         });
         await (AdMob as any).showInterstitial();
     } catch (e) {
@@ -1203,11 +1203,11 @@ window.addEventListener('load', () => {
         try {
             await (AdMob as any).initialize({});
             await (AdMob as any).showBanner({
-                adId: 'ca-app-pub-3940256099942544/6300978111',
+                adId: 'ca-app-pub-4326644127523914/1714609058',
                 position: BannerAdPosition.BOTTOM_CENTER,
                 size: BannerAdSize.BANNER,
                 margin: 0,
-                isTesting: true,
+                isTesting: false,
             });
             window.dispatchEvent(new Event('resize'));
         } catch (e) {
