@@ -42,10 +42,42 @@ jobs:
 
       - name: Build Signed Play Store AAB & Release APK
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RAW_KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RAW_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release-key.keystore
+          python3 - << 'PYEOF'
+          import os, re, base64, sys
+
+          raw_b64 = os.environ.get("RAW_KEYSTORE_BASE64", "")
+          raw_pwd = os.environ.get("RAW_KEYSTORE_PASSWORD", "")
+
+          if not raw_b64 or not raw_pwd:
+              print("❌ ERROR: GitHub Secrets KEYSTORE_BASE64 or KEYSTORE_PASSWORD is empty!")
+              sys.exit(1)
+
+          # Extract base64 starting from MII and remove any ==== borders or spaces
+          m_b64 = re.search(r'(MII[A-Za-z0-9+/=\s]+)', raw_b64)
+          clean_b64 = m_b64.group(1) if m_b64 else raw_b64
+          clean_b64 = re.sub(r'={3,}', '', clean_b64)
+          clean_b64 = re.sub(r'[^A-Za-z0-9+/=]', '', clean_b64)
+          if len(clean_b64) % 4 != 0:
+              clean_b64 += '=' * (4 - (len(clean_b64) % 4))
+
+          keystore_bytes = base64.b64decode(clean_b64)
+          with open("android/app/release-key.keystore", "wb") as f:
+              f.write(keystore_bytes)
+          print(f"✅ Keystore decoded cleanly ({len(keystore_bytes)} bytes)")
+
+          # Extract clean password (e.g., Hasan_...)
+          m_pwd = re.search(r'(Hasan_[A-Za-z0-9]+)', raw_pwd)
+          clean_pwd = m_pwd.group(1) if m_pwd else raw_pwd.strip()
+          with open(".clean_keystore_pwd", "w") as pf:
+              pf.write(clean_pwd)
+          PYEOF
+
+          export KEYSTORE_PASSWORD=$(cat .clean_keystore_pwd)
+          rm -f .clean_keystore_pwd
+
           cd android
           chmod +x gradlew
           ./gradlew bundleRelease assembleRelease || (sed -i 's/minSdkVersion = 21/minSdkVersion = 23/g' variables.gradle && ./gradlew bundleRelease assembleRelease) || (sed -i 's/minSdkVersion = 23/minSdkVersion = 24/g' variables.gradle && ./gradlew bundleRelease assembleRelease)
