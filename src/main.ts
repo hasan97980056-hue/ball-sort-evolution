@@ -578,7 +578,7 @@ function applyProgressToRuntime(progress: SavedGameProgress) {
     currentLevel = progress.currentLevel;
     highestUnlockedLevel = progress.highestUnlockedLevel;
     clearedLevels = [...progress.clearedLevels];
-    coins = 5000; progress.coins = 5000;
+    coins = progress.coins;
     undosLeft = progress.undosLeft;
     hintsLeft = progress.hintsLeft;
     extraTubeAdded = progress.extraTubeAdded;

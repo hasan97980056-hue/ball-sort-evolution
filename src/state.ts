@@ -112,7 +112,7 @@ export function createDefaultProgress(startingCoins: number = DEFAULT_COINS): Sa
         currentBoard: null,
         initialBoard: null,
         history: [],
-        coins: (safeCoins >= 0 ? DEFAULT_COINS : DEFAULT_COINS),
+        coins: safeCoins,
         undosLeft: DEFAULT_UNDOS,
         hintsLeft: DEFAULT_HINTS,
         extraTubeAdded: false,
